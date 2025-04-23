@@ -23,9 +23,6 @@ This project sets up an OpenVPN server inside a Docker container using Alpine Li
 # 📂 Directory Structure
 Mounted volume /data will contain:
 
-arduino
-Copy
-Edit
 data/
 └── netlab-YYYY-MM-DD/
     ├── netlab-YYYY-MM-DD.ovpn      ← Client config
