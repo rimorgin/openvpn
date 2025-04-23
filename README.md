@@ -43,18 +43,25 @@ services:
     restart: unless-stopped
     cap_add:
       - NET_ADMIN
-      - SYS_MODULE
+      - MKNOD
     privileged: true
     ports:
       - "1194:1194/udp"
     environment:
-      - OPENVPN_SERVER_IP=10.15.20.34 # default to public ip address
-      # Optional: - OPENVPN_CLIENT_FILENAME=(defaults to netlab-datetoday)
-      # Optional: - PERSISTED_DIRECTORY_NAME=(defaults to netlab-datetod
+      - OPENVPN_SERVER_IP=10.15.20.34 # Defaults to public IP address if not set
+      # Optional:
+      - OPENVPN_CLIENT_FILENAME=custom-client-name # Defaults to netlab-YYYY-MM-DD
+      - PERSISTED_DIRECTORY_NAME=custom-directory-name # Defaults to netlab-YYYY-MM-DD
+      - RESET_OPENVPN_CONFIG=true # Set to true to reset configuration on startup (defaults to false)
     devices:
-      - /dev/net/tun
+      - /dev/net/tun:/dev/net/tun
     volumes:
       - ./data:/data
+    healthcheck:
+      test: ["CMD", "pgrep", "openvpn"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 ```
 
 ```

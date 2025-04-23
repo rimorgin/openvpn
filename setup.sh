@@ -40,8 +40,8 @@ apply_iptables_rules() {
     iptables -t nat -A POSTROUTING -s 10.0.0.0/24 -o "$OUT_IFACE" -j MASQUERADE
 
     # Uncomment these if you need inter-interface forwarding
-    #iptables -C FORWARD -i tun0 -o "$OUT_IFACE" -j ACCEPT 2>/dev/null || iptables -A FORWARD -i tun0 -o "$OUT_IFACE" -j ACCEPT
-    #iptables -C FORWARD -i "$OUT_IFACE" -o tun0 -j ACCEPT 2>/dev/null || iptables -A FORWARD -i "$OUT_IFACE" -o tun0 -j ACCEPT
+    iptables -C FORWARD -i tun0 -o "$OUT_IFACE" -j ACCEPT 2>/dev/null || iptables -A FORWARD -i tun0 -o "$OUT_IFACE" -j ACCEPT
+    iptables -C FORWARD -i "$OUT_IFACE" -o tun0 -j ACCEPT 2>/dev/null || iptables -A FORWARD -i "$OUT_IFACE" -o tun0 -j ACCEPT
 }
 
 enable_ip_forwarding() {
@@ -125,6 +125,13 @@ start_openvpn() {
 }
 
 # ========== Main Logic ==========
+
+if [ "${RESET_OPENVPN_CONFIG:-false}" = "true" ]; then
+  log "Resetting OpenVPN config"
+  rm -rf /data/*
+  first_time_setup
+fi
+
 if [ ! -d "$PERSISTED_FOLDER_DIRECTORY" ]; then
     first_time_setup
 else
