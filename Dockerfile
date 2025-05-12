@@ -12,4 +12,4 @@ WORKDIR /data
 
 VOLUME ["/data"]
 
-ENTRYPOINT ["/setup.sh"]
+CMD ["/setup.sh"]

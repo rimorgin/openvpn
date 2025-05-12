@@ -13,7 +13,7 @@ fatal() {
 
 log "Reading environment variables"
 
-MY_IP_ADDR=${OPENVPN_SERVER_IP:-$(dig @ns1.google.com -t txt o-o.myaddr.l.google.com +short -4 | sed 's/"//g')}
+MY_IP_ADDR=${OPENVPN_SERVER_IP:-$(dig @ns1.google.com -t txt o-o.myaddr.l.google.com +short -4 | sed 's/\"//g')}
 OPENVPN_CLIENT_FILENAME=${OPENVPN_CLIENT_FILENAME:-netlab-$(date +%F)}
 PERSISTED_DIRECTORY_NAME=${PERSISTED_DIRECTORY_NAME:-netlab-$(date +%F)}
 
@@ -36,10 +36,8 @@ check_ip_changed() {
 }
 
 apply_iptables_rules() {
-    iptables -t nat -C POSTROUTING -s 10.0.0.0/24 -o "$OUT_IFACE" -j MASQUERADE 2>/dev/null || \
-    iptables -t nat -A POSTROUTING -s 10.0.0.0/24 -o "$OUT_IFACE" -j MASQUERADE
-
-    # Uncomment these if you need inter-interface forwarding
+    iptables -t nat -C POSTROUTING -s 10.0.0.0/23 -o "$OUT_IFACE" -j MASQUERADE 2>/dev/null || \
+    iptables -t nat -A POSTROUTING -s 10.0.0.0/23 -o "$OUT_IFACE" -j MASQUERADE
     iptables -C FORWARD -i tun0 -o "$OUT_IFACE" -j ACCEPT 2>/dev/null || iptables -A FORWARD -i tun0 -o "$OUT_IFACE" -j ACCEPT
     iptables -C FORWARD -i "$OUT_IFACE" -o tun0 -j ACCEPT 2>/dev/null || iptables -A FORWARD -i "$OUT_IFACE" -o tun0 -j ACCEPT
 }
@@ -51,57 +49,108 @@ enable_ip_forwarding() {
 }
 
 first_time_setup() {
-    log "First-time setup: generating keys and configs"
+    log "First-time setup: generating CA, server, and client keys and certs"
 
     mkdir -p "$PERSISTED_FOLDER_DIRECTORY"
-
-    [ -d /dev/net ] || mkdir -p /dev/net
+    mkdir -p /etc/openvpn
+    mkdir -p /dev/net
     [ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200
 
-    openssl dhparam -out /etc/openvpn/dh.pem 2048
-    openssl genrsa -out /etc/openvpn/key.pem 2048
-    chmod 600 /etc/openvpn/key.pem
-    openssl req -new -key /etc/openvpn/key.pem -out /etc/openvpn/csr.pem -subj "/CN=OpenVPN/"
-    openssl x509 -req -in /etc/openvpn/csr.pem -out /etc/openvpn/cert.pem -signkey /etc/openvpn/key.pem -days 24855
+    # === Generate CA ===
+    openssl genrsa -out /etc/openvpn/ca.key 4096
+    openssl req -new -x509 -key /etc/openvpn/ca.key -out /etc/openvpn/ca.crt \
+        -days 3650 -subj "/CN=OpenVPN-CA" \
+        -extensions v3_ca -config <(cat <<-EOF
+[ req ]
+distinguished_name = req_distinguished_name
+x509_extensions = v3_ca
+[ req_distinguished_name ]
+[ v3_ca ]
+basicConstraints = CA:TRUE
+keyUsage = critical, keyCertSign, cRLSign
+EOF
+)
 
+    # === Generate Server Key and CSR ===
+    openssl genrsa -out /etc/openvpn/server.key 4096
+    openssl req -new -key /etc/openvpn/server.key -out /etc/openvpn/server.csr \
+        -subj "/CN=OpenVPN-Server"
+
+    # Sign Server Cert with Extensions
+    openssl x509 -req -in /etc/openvpn/server.csr -CA /etc/openvpn/ca.crt \
+        -CAkey /etc/openvpn/ca.key -CAcreateserial \
+        -out /etc/openvpn/server.crt -days 3650 -sha256 \
+        -extfile <(cat <<-EOF
+basicConstraints=CA:FALSE
+keyUsage=critical,digitalSignature,keyEncipherment
+extendedKeyUsage=serverAuth
+subjectAltName=IP:$MY_IP_ADDR
+EOF
+)
+
+    # === Generate Client Key and CSR ===
+    openssl genrsa -out /etc/openvpn/client.key 4096
+    openssl req -new -key /etc/openvpn/client.key -out /etc/openvpn/client.csr \
+        -subj "/CN=client"
+
+    # Sign Client Cert with Extensions
+    openssl x509 -req -in /etc/openvpn/client.csr -CA /etc/openvpn/ca.crt \
+        -CAkey /etc/openvpn/ca.key -CAcreateserial \
+        -out /etc/openvpn/client.crt -days 3650 -sha256 \
+        -extfile <(cat <<-EOF
+basicConstraints=CA:FALSE
+keyUsage=critical,digitalSignature
+extendedKeyUsage=clientAuth
+EOF
+)
+
+    # Generate tls-crypt key
+    openvpn --genkey secret /etc/openvpn/tc.key
+
+    # Build client config
     cat <<EOF > "/root/client.ovpn"
-data-ciphers AES-256-GCM:AES-128-GCM
-data-ciphers-fallback AES-256-CBC
 client
-nobind
-comp-lzo
 dev tun
 proto udp
+remote $MY_IP_ADDR 1194
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+remote-cert-tls server
 ping 10
 ping-restart 60
+verb 3
+data-ciphers AES-256-GCM:AES-128-GCM
+data-ciphers-fallback AES-256-CBC
 <key>
-$(cat /etc/openvpn/key.pem)
+$(cat /etc/openvpn/client.key)
 </key>
 <cert>
-$(cat /etc/openvpn/cert.pem)
+$(cat /etc/openvpn/client.crt)
 </cert>
 <ca>
-$(cat /etc/openvpn/cert.pem)
+$(cat /etc/openvpn/ca.crt)
 </ca>
-<connection>
-remote $MY_IP_ADDR 1194
-</connection>
+<tls-crypt>
+$(cat /etc/openvpn/tc.key)
+</tls-crypt>
 EOF
 
     cp /root/client.ovpn "$PERSISTED_FOLDER_DIRECTORY/$OPENVPN_CLIENT_FILENAME.ovpn"
 
+    # Create server config
     cat <<EOF > /etc/openvpn/openvpn.conf
-server 10.0.0.0 255.255.255.0
+server 10.0.0.0 255.255.254.0
 verb 3
-comp-lzo
-key /etc/openvpn/key.pem
-ca /etc/openvpn/cert.pem
-cert /etc/openvpn/cert.pem
+duplicate-cn
+key /etc/openvpn/server.key
+cert /etc/openvpn/server.crt
+ca /etc/openvpn/ca.crt
 dh /etc/openvpn/dh.pem
 topology subnet
 keepalive 10 120
-ifconfig-pool-persist ipp.txt
-push "route 10.0.0.0 255.255.255.0"
+tls-crypt /etc/openvpn/tc.key
 persist-key
 persist-tun
 proto udp
@@ -111,28 +160,34 @@ group nobody
 dev tun
 data-ciphers AES-256-GCM:AES-128-GCM
 data-ciphers-fallback AES-256-CBC
-status /var/log/openvpn-status.log
-log-append /var/log/openvpn.log
+status /etc/openvpn/openvpn-status.log
+log-append /etc/openvpn/openvpn.log
 EOF
 
-    mkdir -p "$PERSISTED_FOLDER_DIRECTORY/config"
+    openssl dhparam -out /etc/openvpn/dh.pem 2048
+
     cp -a /etc/openvpn/. "$PERSISTED_FOLDER_DIRECTORY/config"
 }
 
+
 start_openvpn() {
     log "Starting OpenVPN"
-    exec openvpn --config /etc/openvpn/openvpn.conf
+    touch /etc/openvpn/openvpn-status.log /etc/openvpn/openvpn.log
+    openvpn --config /etc/openvpn/openvpn.conf &
+    log "Started OpenVPN"
+    tail -f /etc/openvpn/openvpn-status.log /etc/openvpn/openvpn.log
+    wait
 }
 
 # ========== Main Logic ==========
 
 if [ "${RESET_OPENVPN_CONFIG:-false}" = "true" ]; then
-  log "Resetting OpenVPN config"
-  rm -rf /data/*
-  first_time_setup
+    log "Resetting OpenVPN config"
+    rm -rf /data/*
+    first_time_setup
 fi
 
-if [ ! -d "$PERSISTED_FOLDER_DIRECTORY" ]; then
+if [ ! -d "$PERSISTED_FOLDER_DIRECTORY/config" ]; then  
     first_time_setup
 else
     log "OpenVPN config found, restoring"
@@ -144,6 +199,6 @@ enable_ip_forwarding
 apply_iptables_rules
 
 log "VPN client config is saved at $PERSISTED_FOLDER_DIRECTORY/$OPENVPN_CLIENT_FILENAME.ovpn"
-log "Check logs: /var/log/openvpn-status.log and /var/log/openvpn.log"
+log "Check logs: /etc/openvpn/openvpn-status.log and /etc/openvpn/openvpn.log"
 
 start_openvpn

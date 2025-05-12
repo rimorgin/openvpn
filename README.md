@@ -22,11 +22,12 @@ This project sets up an OpenVPN server inside a Docker container using Alpine Li
 
 # 📂 Directory Structure
 Mounted volume /data will contain:
-
+```plaintext
 data/
 └── netlab-YYYY-MM-DD/
-    ├── netlab-YYYY-MM-DD.ovpn      ← Client config
-    └── config/                     ← Server config backup
+  ├── netlab-YYYY-MM-DD.ovpn      ← Client config
+  └── config/                     ← Server config backup
+```
 
 # 🧪 Usage
 Clone this repo and build/start with Docker Compose:
