@@ -1,21 +1,20 @@
-# 🛡️ OpenVPN Docker Server (Split Tunneling) with Dynamic Config
+# 🛡️ OpenVPN Docker Server (Full/Split Tunneling) with Dynamic Config
 
-This project sets up an OpenVPN server inside a Docker container using Alpine Linux. It supports **split tunneling**, **dynamic public IP detection**, and **persistent configuration** storage using mounted volumes.
+This project sets up an OpenVPN server inside a Docker container using Alpine Linux. It supports **full/split tunneling**, **dynamic public IP detection**, and **persistent configuration** storage using mounted volumes.
 
 # 🚀 Features
 ✨ First-run automatic PKI (TLS cert, key, dhparam) generation
 
 📄 Generates a reusable OpenVPN .ovpn client file
 
-🔁 Automatically updates client file if server IP changes
-
 🔀 Enables IP forwarding and sets up NAT for VPN subnet
 
-🔒 Split tunneling by default: only 10.0.0.0/24 is routed through the VPN
+🔒 Split tunneling by default (Full tunnel can be enabled and optional): only 10.0.0.0/24 is routed through the VPN
 
 
 | Variable                | Description                                         | Default               |
 |-------------------------|-----------------------------------------------------|-----------------------|
+| `FULL_TUNNEL` | Enable full tunnel (fallbacks to false and split-tunnel) | `false`   |
 | `OPENVPN_SERVER_IP`     | Public IP of this server (fallbacks to auto-detected IP) | Auto via `dig`        |
 | `OPENVPN_CLIENT_FILENAME` | Name of the generated `.ovpn` config file           | `netlab-YYYY-MM-DD`   |
 | `PERSISTED_DIRECTORY_NAME` | Subfolder under `/data/` to store generated keys/configs | `netlab-YYYY-MM-DD`   |
@@ -49,11 +48,11 @@ services:
     ports:
       - "1194:1194/udp"
     environment:
+      - FULL_TUNNEL=true # Defaults to false, hence split tunnelling will be used
       - OPENVPN_SERVER_IP=10.15.20.34 # Defaults to public IP address if not set
       # Optional:
       - OPENVPN_CLIENT_FILENAME=custom-client-name # Defaults to netlab-YYYY-MM-DD
       - PERSISTED_DIRECTORY_NAME=custom-directory-name # Defaults to netlab-YYYY-MM-DD
-      - RESET_OPENVPN_CONFIG=true # Set to true to reset configuration on startup (defaults to false)
     devices:
       - /dev/net/tun:/dev/net/tun
     volumes:

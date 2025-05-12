@@ -20,8 +20,6 @@ PERSISTED_DIRECTORY_NAME=${PERSISTED_DIRECTORY_NAME:-netlab-$(date +%F)}
 PERSISTED_FOLDER_DIRECTORY="/data/$PERSISTED_DIRECTORY_NAME"
 OUT_IFACE=$(ip route get 8.8.8.8 | awk '{print $5; exit}')
 
-mkdir -p /etc/openvpn
-
 check_ip_changed() {
     local client_file="$PERSISTED_FOLDER_DIRECTORY/$OPENVPN_CLIENT_FILENAME.ovpn"
     if [ -f "$client_file" ]; then
@@ -36,10 +34,9 @@ check_ip_changed() {
 }
 
 apply_iptables_rules() {
-    iptables -t nat -C POSTROUTING -s 10.0.0.0/23 -o "$OUT_IFACE" -j MASQUERADE 2>/dev/null || \
     iptables -t nat -A POSTROUTING -s 10.0.0.0/23 -o "$OUT_IFACE" -j MASQUERADE
-    iptables -C FORWARD -i tun0 -o "$OUT_IFACE" -j ACCEPT 2>/dev/null || iptables -A FORWARD -i tun0 -o "$OUT_IFACE" -j ACCEPT
-    iptables -C FORWARD -i "$OUT_IFACE" -o tun0 -j ACCEPT 2>/dev/null || iptables -A FORWARD -i "$OUT_IFACE" -o tun0 -j ACCEPT
+    iptables -A FORWARD -i tun0 -o "$OUT_IFACE" -j ACCEPT
+    iptables -A FORWARD -i "$OUT_IFACE" -o tun0 -j ACCEPT
 }
 
 enable_ip_forwarding() {
@@ -164,6 +161,15 @@ status /etc/openvpn/openvpn-status.log
 log-append /etc/openvpn/openvpn.log
 EOF
 
+# Add full tunnel settings conditionally
+if [ "${FULL_TUNNEL:-false}" = "true" ]; then
+    cat <<EOT >> /etc/openvpn/openvpn.conf
+push "redirect-gateway def1 bypass-dhcp"
+push "dhcp-option DNS 8.8.8.8"
+push "dhcp-option DNS 8.8.4.4"
+EOT
+fi
+
     openssl dhparam -out /etc/openvpn/dh.pem 2048
 
     cp -a /etc/openvpn/. "$PERSISTED_FOLDER_DIRECTORY/config"
@@ -180,13 +186,6 @@ start_openvpn() {
 }
 
 # ========== Main Logic ==========
-
-if [ "${RESET_OPENVPN_CONFIG:-false}" = "true" ]; then
-    log "Resetting OpenVPN config"
-    rm -rf /data/*
-    first_time_setup
-fi
-
 if [ ! -d "$PERSISTED_FOLDER_DIRECTORY/config" ]; then  
     first_time_setup
 else
