@@ -3,13 +3,27 @@
 This project sets up an OpenVPN server inside a Docker container using Alpine Linux. It supports **full/split tunneling**, **dynamic public IP detection**, and **persistent configuration** storage using mounted volumes.
 
 # 🚀 Features
-✨ First-run automatic PKI (TLS cert, key, dhparam) generation
+### Core Functionality
 
-📄 Generates a reusable OpenVPN .ovpn client file
+🔐 Automated PKI Management: First-run automatic generation of TLS certificates, keys, and DH parameters
 
-🔀 Enables IP forwarding and sets up NAT for VPN subnet
+📱 Client Configuration: Generates ready-to-use .ovpn client files with embedded certificates
 
-🔒 Split tunneling by default (Full tunnel can be enabled and optional): only 10.0.0.0/24 is routed through the VPN
+🔄 Dynamic IP Detection: Automatically detects and updates public IP address
+
+💾 Persistent Storage: Configuration and certificates stored in mounted volumes
+
+🌐 Network Routing: Configures IP forwarding and NAT for VPN subnet
+
+### Tunneling Options
+
+Split Tunneling (Default): Routes only VPN subnet traffic (10.0.0.0/23) through VPN
+
+Full Tunneling (Optional): Routes all client traffic through VPN server
+
+DNS Integration: Optional DNS server with custom domain support
+
+Static Host Mapping: Custom hostname resolution for VPN clients
 
 
 | Variable                | Description                                         | Default               |
@@ -18,14 +32,18 @@ This project sets up an OpenVPN server inside a Docker container using Alpine Li
 | `OPENVPN_SERVER_IP`     | Public IP of this server (fallbacks to auto-detected IP) | Auto via `dig`        |
 | `OPENVPN_CLIENT_FILENAME` | Name of the generated `.ovpn` config file           | `netlab-YYYY-MM-DD`   |
 | `PERSISTED_DIRECTORY_NAME` | Subfolder under `/data/` to store generated keys/configs | `netlab-YYYY-MM-DD`   |
+| `ENABLE_DNS` | Enable DNS server for VPN clients | `false` |
+| `DOMAIN` | Custom domain for DNS resolution | `local.net `| 
+| `STATIC_HOST_MAPPINGS` | Static hostname mappings | none |
 
 # 📂 Directory Structure
 Mounted volume /data will contain:
 ```plaintext
 data/
 └── netlab-YYYY-MM-DD/
-  ├── netlab-YYYY-MM-DD.ovpn      ← Client config
-  └── config/                     ← Server config backup
+  ├── netlab-YYYY-MM-DD.ovpn          ← Client config
+  ├── netlab-YYYY-MM-DD-LINUX.ovpn    ← Linux/Unix Client config
+  └── config/                         ← Server config backup # You may not be able to see contents of this folder as it requires root privilege
 ```
 
 # 🧪 Usage
@@ -53,6 +71,9 @@ services:
       # Optional:
       - OPENVPN_CLIENT_FILENAME=custom-client-name # Defaults to netlab-YYYY-MM-DD
       - PERSISTED_DIRECTORY_NAME=custom-directory-name # Defaults to netlab-YYYY-MM-DD
+      - ENABLE_DNS=true # Defaults to false
+      - DOMAIN=local
+      - STATIC_HOST_MAPPINGS=10.0.1.100 server.local;10.0.1.101 db.local # each entry must be separated by semi colon ; 
     devices:
       - /dev/net/tun:/dev/net/tun
     volumes:
