@@ -30,8 +30,8 @@ Static Host Mapping: Custom hostname resolution for VPN clients
 |-------------------------|-----------------------------------------------------|-----------------------|
 | `FULL_TUNNEL` | Enable full tunnel (fallbacks to false and split-tunnel) | `false`   |
 | `OPENVPN_SERVER_IP`     | Public IP of this server (fallbacks to auto-detected IP) | Auto via `dig`        |
-| `OPENVPN_CLIENT_FILENAME` | Name of the generated `.ovpn` config file           | `netlab-YYYY-MM-DD`   |
-| `PERSISTED_DIRECTORY_NAME` | Subfolder under `/data/` to store generated keys/configs | `netlab-YYYY-MM-DD`   |
+| `CLIENT_FILENAME` | Name of the generated `.ovpn` config file           | `netlab-YYYY-MM-DD`   |
+| `DIR_NAME` | Subfolder under `/data/` to store generated keys/configs | `netlab-YYYY-MM-DD`   |
 | `ENABLE_DNS` | Enable DNS server for VPN clients | `false` |
 | `DOMAIN` | Custom domain for DNS resolution | `local.net `| 
 | `STATIC_HOST_MAPPINGS` | Static hostname mappings | none |
@@ -69,8 +69,8 @@ services:
       - FULL_TUNNEL=true # Defaults to false, hence split tunnelling will be used
       - OPENVPN_SERVER_IP=10.15.20.34 # Defaults to public IP address if not set
       # Optional:
-      - OPENVPN_CLIENT_FILENAME=custom-client-name # Defaults to netlab-YYYY-MM-DD
-      - PERSISTED_DIRECTORY_NAME=custom-directory-name # Defaults to netlab-YYYY-MM-DD
+      - CLIENT_FILENAME=custom-client-name # Defaults to netlab-YYYY-MM-DD
+      - DIR_NAME=custom-directory-name # Defaults to netlab-YYYY-MM-DD
       - ENABLE_DNS=true # Defaults to false
       - DOMAIN=local
       - STATIC_HOST_MAPPINGS=10.0.1.100 server.local;10.0.1.101 db.local # each entry must be separated by semi colon ; 

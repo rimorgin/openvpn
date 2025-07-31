@@ -1,7 +1,7 @@
 {
   "openvpn": "2.6.14-r0",
   "bind-tools": "9.18.37-r0",
-  "openssl": "3.3.3-r0",
+  "openssl": "3.3.4-r0",
   "iptables": "1.8.11-r1",
   "dnsmasq": "2.90-r3"
 }

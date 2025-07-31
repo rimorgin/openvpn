@@ -5,38 +5,29 @@ set -eu
 # Configuration constants
 readonly SCRIPT_NAME="openvpn-setup"
 readonly DEFAULT_DOMAIN="local.net"
-readonly VPN_SUBNET="10.0.0.0/23"
-readonly VPN_SERVER_IP="10.0.1.254"
+readonly VPN_SUBNET="10.23.88.0/23" #10.23.88.0/23
+readonly VPN_POOL_START="10.23.88.1"
+readonly VPN_POOL_END="10.23.89.253"
+readonly VPN_SERVER_IP="10.23.89.254" # server ip is the last usable ip in the subnet
 readonly VPN_SERVER_HOSTNAME="openvpn-server"
+readonly VPN_NETADDRESS="10.23.88.0"
 readonly VPN_NETMASK="255.255.254.0"
 readonly VPN_PORT="1194"
 readonly DNS_SERVERS="1.1.1.1 8.8.8.8"
 
-# Get current date in POSIX-compliant way
-get_date() {
-    date '+%Y-%m-%d'
-}
-
-# Environment variables with defaults
-get_public_ip() {
-    dig @ns1.google.com -t txt o-o.myaddr.l.google.com +short -4 | sed 's/"//g' 2>/dev/null || {
-        echo "127.0.0.1"
-    }
-}
-
-# Set environment variables
+# Set/Get environment variables
 MY_IP_ADDR="${OPENVPN_SERVER_IP:-$(get_public_ip)}"
 ENABLE_DNS="${ENABLE_DNS:-false}"
 STATIC_HOST_MAPPINGS="${STATIC_HOST_MAPPINGS:-none}"
 DOMAIN="${DOMAIN:-$DEFAULT_DOMAIN}"
-OPENVPN_CLIENT_FILENAME="${OPENVPN_CLIENT_FILENAME:-netlab-$(get_date)}"
-PERSISTED_DIRECTORY_NAME="${PERSISTED_DIRECTORY_NAME:-netlab-$(get_date)}"
+CLIENT_FILENAME="${CLIENT_FILENAME:-netlab-$(get_date)}"
+DIR_NAME="${DIR_NAME:-netlab-$(get_date)}"
 FULL_TUNNEL="${FULL_TUNNEL:-false}"
 
 # Derived paths
-PERSISTED_FOLDER_DIRECTORY="/data/$PERSISTED_DIRECTORY_NAME"
+PERSISTED_FOLDER_DIRECTORY="/data/$DIR_NAME"
 OPENVPN_CONFIG_DIR="/etc/openvpn"
-CLIENT_CONFIG_PATH="$PERSISTED_FOLDER_DIRECTORY/$OPENVPN_CLIENT_FILENAME.ovpn"
+CLIENT_CONFIG_PATH="$PERSISTED_FOLDER_DIRECTORY/$CLIENT_FILENAME.ovpn"
 
 # Logging functions
 log_info() {
@@ -50,6 +41,18 @@ log_error() {
 log_fatal() {
     log_error "$1"
     exit 1
+}
+
+# Get current date in POSIX-compliant way
+get_date() {
+    date '+%Y-%m-%d'
+}
+
+# Environment variables with defaults
+get_public_ip() {
+    dig @ns1.google.com -t txt o-o.myaddr.l.google.com +short -4 | sed 's/"//g' 2>/dev/null || {
+        echo "127.0.0.1"
+    }
 }
 
 # Utility functions
@@ -221,10 +224,18 @@ create_server_config() {
 mode server
 tls-server
 
+# Allow multiple clients to use the same cert
+duplicate-cn
+
 # Network configuration
 ifconfig $VPN_SERVER_IP $VPN_NETMASK
-ifconfig-pool 10.0.0.1 10.0.1.253 $VPN_NETMASK
+ifconfig-pool $VPN_POOL_START $VPN_POOL_END $VPN_NETMASK
 topology subnet
+route-gateway $VPN_SERVER_IP
+
+# Subnet route
+push "route $VPN_NETADDRESS $VPN_NETMASK"
+push "route-gateway $VPN_SERVER_IP"
 
 # Protocol and port
 proto udp
@@ -253,6 +264,12 @@ persist-tun
 status $OPENVPN_CONFIG_DIR/openvpn-status.log
 log-append $OPENVPN_CONFIG_DIR/openvpn.log
 verb 3
+
+# Add conditional configurations to push to clients
+push "topology subnet"
+push "resolv-retry infinite"
+push "data-ciphers AES-256-GCM:AES-128-GCM"
+push "data-ciphers-fallback AES-256-CBC"
 EOF
 
     # Add conditional configurations
@@ -279,25 +296,19 @@ EOF
 create_client_config() {
     log_info "Creating client configuration"
     
-    client_config="$PERSISTED_FOLDER_DIRECTORY/$OPENVPN_CLIENT_FILENAME.ovpn"
+    client_config="$PERSISTED_FOLDER_DIRECTORY/$CLIENT_FILENAME.ovpn"
     
     cat > "$client_config" <<EOF
 # OpenVPN Client Configuration
 client
 dev tun
-topology subnet
 proto udp
 remote $MY_IP_ADDR $VPN_PORT
-resolv-retry infinite
 nobind
-persist-key
-persist-tun
 remote-cert-tls server
 ping 10
 ping-restart 60
 verb 3
-data-ciphers AES-256-GCM:AES-128-GCM
-data-ciphers-fallback AES-256-CBC
 
 <key>
 $(cat "$OPENVPN_CONFIG_DIR/client.key")
@@ -315,7 +326,7 @@ EOF
 
     # Create Linux-specific config if DNS is enabled
     if [ "$ENABLE_DNS" = "true" ]; then
-        linux_config="$PERSISTED_FOLDER_DIRECTORY/$OPENVPN_CLIENT_FILENAME-LINUX.ovpn"
+        linux_config="$PERSISTED_FOLDER_DIRECTORY/$CLIENT_FILENAME-LINUX.ovpn"
         cp "$client_config" "$linux_config"
         cat >> "$linux_config" <<EOF
 
